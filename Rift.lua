@@ -4,9 +4,9 @@
 -- Configuration
 local PLACE_ID = 85896571713843
 local jobIds = {
-    "177af98f-00cb-44b9-8cb4-811e4e1a3ebd",
-    "7e88ed13-1669-4a31-a072-6700db251d6f",
-    "6377fc9a-5bd9-42e0-a980-fe3e2d6fb38a"
+    "1793d6eb-6a25-4090-9f07-c4905fc42414",
+    "aa1ded54-e8e2-422a-b93c-271f2c07dd83",
+    "535083ed-9972-42f5-b6fe-d747747cf926"
 }
 
 -- Store our position
