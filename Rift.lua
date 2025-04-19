@@ -220,7 +220,7 @@ function hop()
         
         -- Save current progress to continue after teleport
         -- You should host this script on a URL you control
-        local scriptUrl = "YOUR_SCRIPT_URL"
+        local scriptUrl = "https://raw.githubusercontent.com/SubbyDubby/Roblox-Rift-Scanner/main/Rift.lua"
         local saveData = "currentIndex = " .. currentIndex
         
         -- Queue script to run after teleport using Swift-specific method
