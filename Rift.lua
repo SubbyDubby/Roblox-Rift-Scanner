@@ -1,4 +1,4 @@
--- Ultra-Simple Rift Scanner for Swift
+-- Ultra-Simple Rift Scanner for Swift (Fixed Teleport Version)
 -- This script focuses on server hopping with minimal complexity
 
 -- Configuration
@@ -10,18 +10,15 @@ local jobIds = {
     -- Add more as needed, but start with just a few for testing
 }
 
--- Store our position in a file to ensure persistence between servers
-if not _G.ScriptStarted then
-    _G.CurrentIndex = 1
-    _G.ScriptStarted = true
-    print("[RiftScanner] First run, starting with server 1")
-else
-    print("[RiftScanner] Continuing from previous server")
-end
+-- Store our position in a global variable
+_G.CurrentIndex = _G.CurrentIndex or 1
+_G.ScriptStarted = true
 
+print("[RiftScanner] Script started, server index: " .. _G.CurrentIndex)
+
+-- Simple scan function
 local function scanServer()
     print("[RiftScanner] Scanning server...")
-    -- Simple scan implementation
     local foundRift = false
     
     -- Check PlayerGui for rift messages
@@ -31,7 +28,6 @@ local function scanServer()
             if gui:IsA("TextLabel") and gui.Text and gui.Text:find("has appeared") then
                 print("[RiftScanner] Found potential rift: " .. gui.Text:sub(1, 50))
                 foundRift = true
-                -- Would send webhook here in full implementation
             end
         end
     end
@@ -41,7 +37,6 @@ local function scanServer()
         if obj:IsA("TextLabel") and obj.Text and obj.Text:find("has appeared") then
             print("[RiftScanner] Found potential rift in workspace: " .. obj.Text:sub(1, 50))
             foundRift = true
-            -- Would send webhook here in full implementation
         end
     end
     
@@ -55,6 +50,7 @@ local function scanServer()
     hopToNextServer()
 end
 
+-- Improved teleport function
 function hopToNextServer()
     _G.CurrentIndex = _G.CurrentIndex + 1
     
@@ -63,26 +59,22 @@ function hopToNextServer()
         print("[RiftScanner] Hopping to server " .. _G.CurrentIndex .. " with JobID: " .. nextJobId)
         
         -- IMPORTANT: Save our script state before teleporting
+        local scriptToQueue = [[
+            _G.CurrentIndex = ]] .. _G.CurrentIndex .. [[
+            print("[RiftScanner] Continuing execution in new server at index: " .. _G.CurrentIndex)
+            
+            -- Wait a few seconds before executing the script
+            spawn(function()
+                wait(5)
+                loadstring(game:HttpGet('https://raw.githubusercontent.com/SubbyDubby/Roblox-Rift-Scanner/main/Rift.lua'))()
+            end)
+        ]]
+        
+        -- Queue the script to run after teleport
         if syn and syn.queue_on_teleport then
-            syn.queue_on_teleport([[
-                _G.ScriptStarted = true
-                _G.CurrentIndex = ]] .. _G.CurrentIndex .. [[
-                print("[RiftScanner] Continuing execution in new server at index: " .. _G.CurrentIndex)
-                task.spawn(function()
-                    task.wait(5)
-                    loadstring(game:HttpGet('https://raw.githubusercontent.com/SubbyDubby/Roblox-Rift-Scanner/main/Rift.lua'))()
-                end)
-            ]])
+            syn.queue_on_teleport(scriptToQueue)
         elseif queue_on_teleport then
-            queue_on_teleport([[
-                _G.ScriptStarted = true
-                _G.CurrentIndex = ]] .. _G.CurrentIndex .. [[
-                print("[RiftScanner] Continuing execution in new server at index: " .. _G.CurrentIndex)
-                task.spawn(function()
-                    task.wait(5)
-                    loadstring(game:HttpGet('https://raw.githubusercontent.com/SubbyDubby/Roblox-Rift-Scanner/main/Rift.lua'))()
-                end)
-            ]])
+            queue_on_teleport(scriptToQueue)
         else
             print("[RiftScanner] WARNING: No queue_on_teleport function found!")
         end
@@ -90,17 +82,48 @@ function hopToNextServer()
         -- Give time for queue_on_teleport to register
         wait(1)
         
-        -- Teleport to next server
+        -- Try to teleport with error handling for various exploit limitations
         print("[RiftScanner] Executing teleport now...")
-        game:GetService('TeleportService'):TeleportToPlaceInstance(PLACE_ID, nextJobId, game:GetService("Players").LocalPlayer)
+        
+        -- Method 1: Direct TeleportService call with fixed arguments
+        local success = pcall(function()
+            local TeleportService = game:GetService("TeleportService")
+            local Players = game:GetService("Players")
+            TeleportService:TeleportToPlaceInstance(tonumber(PLACE_ID), nextJobId, Players.LocalPlayer)
+        end)
+        
+        if not success then
+            print("[RiftScanner] First teleport method failed, trying alternative...")
+            
+            -- Method 2: Alternative syntax that might work better with Swift
+            success = pcall(function()
+                local args = {
+                    [1] = tonumber(PLACE_ID),
+                    [2] = nextJobId,
+                    [3] = game:GetService("Players").LocalPlayer
+                }
+                game:GetService("TeleportService"):TeleportToPlaceInstance(unpack(args))
+            end)
+            
+            if not success then
+                print("[RiftScanner] Second teleport method failed, trying another alternative...")
+                
+                -- Method 3: Very simple form that might work with Swift
+                success = pcall(function()
+                    game:GetService("TeleportService"):TeleportToPlaceInstance(PLACE_ID, nextJobId)
+                end)
+                
+                if not success then
+                    print("[RiftScanner] All teleport methods failed! Moving to next server in list...")
+                    -- Skip to next server if teleport fails
+                    hopToNextServer()
+                end
+            end
+        end
     else
         print("[RiftScanner] Finished scanning all servers in the list")
     end
 end
-
--- Main execution starts here
-print("[RiftScanner] Script started")
-print("[RiftScanner] Current server index: " .. _G.CurrentIndex)
 
 -- Wait for game to load if needed
 if not game:IsLoaded() then 
