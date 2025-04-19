@@ -1,95 +1,31 @@
--- Swift Executor Compatible Rift Scanner
+-- Swift-Compatible Rift Scanner
 -- Configuration
 local WEBHOOK = "https://discord.com/api/webhooks/1363251024210432164/B26f2Tvrl_QuigIZ5AJswcd1hYKPGxIHlYzUUu-cicdhF6kj2i5hrQi16-YK2-R7rk0Y" -- Replace with your Discord webhook
 local PLACE_ID = 85896571713843
 local jobIds = {
     "177af98f-00cb-44b9-8cb4-811e4e1a3ebd",
     "7e88ed13-1669-4a31-a072-6700db251d6f",
-    -- ... other job IDs remain the same
+    "6377fc9a-5bd9-42e0-a980-fe3e2d6fb38a",
+    "4383e4cc-c155-4c7b-850a-de7d2fed5478",
+    "8fd95693-052b-4be6-a2b5-213f7da3edcb",
+    "66f0d910-ed20-4dda-b2af-7406976c5a65",
+    "c795f860-4a54-43f3-93f3-2016482e949d",
+    "01e126ee-1c4e-40ff-a924-e100269b9071",
+    "8e6b8096-8e23-4928-a75c-e09560c93d9e",
+    "8ec9fbdc-f596-4d85-92c5-c0a013d9787c",
+    "e60f70e4-5936-49b6-b363-2d4e18257b8d",
+    "3bd84f7e-fbc8-4b16-aede-962fa9b4d3d9",
+    "43b2ec26-5670-4380-894a-6040c9830780",
+    -- Add the rest of your job IDs here
 }
 
 -- Variables
 local currentIndex = 1
 local hasScanned = false
-local scanDelay = 15 -- Increased delay for better loading
-local maxRetries = 3 -- Maximum number of retry attempts
+local scanDelay = 15 -- Seconds to wait after joining before scanning
+local maxRetries = 3 -- Maximum webhook retry attempts
 
--- Services with proper exploit compatibility
-local HttpService = {
-    JSONEncode = function(data)
-        -- First try native JSONEncode
-        local success, result = pcall(function()
-            return game:GetService("HttpService"):JSONEncode(data)
-        end)
-        
-        if success then return result end
-        
-        -- Fallback JSON encoder if needed
-        local json = ""
-        if type(data) == "table" then
-            json = json .. "{"
-            for k, v in pairs(data) do
-                if type(k) == "string" then
-                    json = json .. '"' .. k .. '":' 
-                end
-                
-                if type(v) == "table" then
-                    json = json .. HttpService.JSONEncode(v)
-                elseif type(v) == "string" then
-                    json = json .. '"' .. v .. '"'
-                elseif type(v) == "number" then
-                    json = json .. v
-                elseif type(v) == "boolean" then
-                    json = json .. tostring(v)
-                end
-                
-                json = json .. ","
-            end
-            if json:sub(-1) == "," then
-                json = json:sub(1, #json - 1)
-            end
-            json = json .. "}"
-        end
-        return json
-    end,
-    
-    PostAsync = function(url, data)
-        -- Attempt to use Swift's HTTP request function
-        if syn and syn.request then
-            return syn.request({
-                Url = url,
-                Method = "POST",
-                Headers = {["Content-Type"] = "application/json"},
-                Body = data
-            })
-        elseif http_request then
-            return http_request({
-                Url = url,
-                Method = "POST",
-                Headers = {["Content-Type"] = "application/json"},
-                Body = data
-            })
-        elseif request then
-            return request({
-                Url = url,
-                Method = "POST",
-                Headers = {["Content-Type"] = "application/json"},
-                Body = data
-            })
-        elseif http and http.request then
-            return http.request({
-                Url = url,
-                Method = "POST",
-                Headers = {["Content-Type"] = "application/json"},
-                Body = data
-            })
-        else
-            warn("No HTTP request function found!")
-            return nil
-        end
-    end
-}
-
+-- Services
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -106,8 +42,86 @@ local function log(message, type)
     end
 end
 
+-- HTTP Request function that works with exploits
+local function httpRequest(url, data)
+    -- Try different HTTP request methods available in exploits
+    local success, result
+    
+    if syn and syn.request then
+        success, result = pcall(function()
+            return syn.request({
+                Url = url,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = data
+            })
+        end)
+    elseif http_request then
+        success, result = pcall(function()
+            return http_request({
+                Url = url,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = data
+            })
+        end)
+    elseif request then
+        success, result = pcall(function()
+            return request({
+                Url = url,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = data
+            })
+        end)
+    elseif http and http.request then
+        success, result = pcall(function()
+            return http.request({
+                Url = url,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = data
+            })
+        end)
+    else
+        return false, "No HTTP request function found"
+    end
+    
+    return success, result
+end
+
+-- JSON Encode function that works with exploits
+local function jsonEncode(data)
+    local success, result = pcall(function()
+        return game:GetService("HttpService"):JSONEncode(data)
+    end)
+    
+    if success then return result end
+    
+    -- Fallback JSON encoder
+    local function encode(val)
+        if type(val) == "table" then
+            local result = "{"
+            for k, v in pairs(val) do
+                local key = type(k) == "string" and '"'..k..'"' or "["..encode(k).."]"
+                result = result .. key .. ":" .. encode(v) .. ","
+            end
+            if result:sub(-1) == "," then result = result:sub(1, -2) end
+            return result .. "}"
+        elseif type(val) == "string" then
+            return '"' .. val:gsub('"', '\\"'):gsub("\n", "\\n") .. '"'
+        else
+            return tostring(val)
+        end
+    end
+    
+    return encode(data)
+end
+
 -- Parse rift descriptions from text
 function parseRiftDescription(desc)
+    log("Parsing description: " .. desc:sub(1, 50) .. "...")
+    
     local eggName = string.match(desc, "%*%*(.-)%*%* has appeared")
     local luck = string.match(desc, "with (.-) luck")
     local pos = string.match(desc, "%*%*Position%*%*%s*(.-)%s*\n")
@@ -115,13 +129,17 @@ function parseRiftDescription(desc)
     local timer = string.match(desc, "%*%*Timer%*%*%s*(.-)%s*\n")
     local jobId = string.match(desc, "TeleportToPlaceInstance%([^,]+, ['\"](.-)['\"]")
     
+    -- Debug the matches
+    log("Egg Name: " .. (eggName or "nil"))
+    log("Luck: " .. (luck or "nil"))
+    log("Position: " .. (pos or "nil"))
+    
     -- Categorize rift based on name or other properties
     local riftType = "Unknown"
     if eggName then
-        -- Add your specific rift classification logic here
-        if string.find(string.lower(eggName or ""), "ancient") then
+        if string.find(string.lower(eggName), "ancient") then
             riftType = "Rift 1"
-        elseif string.find(string.lower(eggName or ""), "mystic") then
+        elseif string.find(string.lower(eggName), "mystic") then
             riftType = "Rift 2"
         end
     end
@@ -139,27 +157,27 @@ end
 
 -- Send webhook with retry mechanism
 function sendWebhook(data)
+    log("Preparing webhook for rift: " .. data.name)
+    
     local embed = {
         ["title"] = string.format("Rift Detected: %s", data.riftType),
         ["description"] = string.format("**%s** has appeared with **%s** luck!\n\n**Position**\n%s\n\n**Height (Y)**\n%s\n\n**Timer**\n%s\n\n**Teleport Link**\n[Join Game](https://slayervalue.com/roblox/join_game.php?placeId=%s&jobId=%s)",
             data.name, data.luck, data.position, data.height, data.timer, PLACE_ID, data.jobId),
-        ["color"] = 123456
+        ["color"] = 16711680 -- Red color
     }
     
-    local payload = HttpService.JSONEncode({embeds = {embed}})
+    local payload = jsonEncode({embeds = {embed}})
     
     -- Try sending webhook with retries
     local retryCount = 0
     local success = false
     
     while not success and retryCount < maxRetries do
-        local response
-        success, response = pcall(function()
-            return HttpService.PostAsync(WEBHOOK, payload)
-        end)
+        local httpSuccess, response = httpRequest(WEBHOOK, payload)
         
-        if success then
+        if httpSuccess then
             log("Webhook sent successfully!")
+            success = true
             break
         else
             retryCount = retryCount + 1
@@ -171,27 +189,48 @@ function sendWebhook(data)
     return success
 end
 
--- Scan for rifts
+-- Scan for rifts with improved detection
 function scanRifts()
     if hasScanned then return end -- Prevent multiple scans
     
     log("Scanning for rifts...")
     local foundRift = false
     
-    -- Collect all text labels first to avoid issues during iteration
-    local textLabels = {}
-    for _, descendant in pairs(Workspace:GetDescendants()) do
-        if descendant:IsA("TextLabel") then
-            table.insert(textLabels, descendant)
+    -- IMPORTANT: Collect all GUI elements, not just in workspace
+    local guiElements = {}
+    
+    -- Search in PlayerGui
+    if LocalPlayer:FindFirstChild("PlayerGui") then
+        for _, gui in pairs(LocalPlayer.PlayerGui:GetDescendants()) do
+            if gui:IsA("TextLabel") or gui:IsA("TextButton") then
+                table.insert(guiElements, gui)
+            end
         end
     end
     
-    log("Found " .. #textLabels .. " text labels to scan")
+    -- Search in CoreGui
+    pcall(function()
+        for _, gui in pairs(game:GetService("CoreGui"):GetDescendants()) do
+            if gui:IsA("TextLabel") or gui:IsA("TextButton") then
+                table.insert(guiElements, gui)
+            end
+        end
+    end)
     
-    -- Now scan the collected text labels
-    for _, textLabel in ipairs(textLabels) do
-        if textLabel and textLabel:IsA("TextLabel") and textLabel.Text and string.find(textLabel.Text, "has appeared") then
-            local rift = parseRiftDescription(textLabel.Text)
+    -- Search in workspace
+    for _, descendant in pairs(Workspace:GetDescendants()) do
+        if descendant:IsA("TextLabel") or descendant:IsA("TextButton") then
+            table.insert(guiElements, descendant)
+        end
+    end
+    
+    log("Found " .. #guiElements .. " GUI elements to scan")
+    
+    -- Now scan the collected GUI elements
+    for _, gui in ipairs(guiElements) do
+        if gui and gui.Text and string.find(gui.Text, "has appeared") then
+            log("Found potential rift message: " .. gui.Text:sub(1, 50) .. "...")
+            local rift = parseRiftDescription(gui.Text)
             local webhookSent = sendWebhook(rift)
             foundRift = true
             log("Found rift: " .. rift.name .. " (Webhook sent: " .. tostring(webhookSent) .. ")")
@@ -209,7 +248,7 @@ function scanRifts()
     task.delay(5, hop)
 end
 
--- Hop to next server using Swift's specific methods
+-- Hop to next server - using the method you confirmed works
 function hop()
     log("Preparing to hop to next server...")
     currentIndex = currentIndex + 1
@@ -218,63 +257,24 @@ function hop()
         local nextJobId = jobIds[currentIndex]
         log("Teleporting to server " .. currentIndex .. " with JobID: " .. nextJobId)
         
-        -- Save current progress to continue after teleport
-        -- You should host this script on a URL you control
+        -- Queue script to run after teleport (important for continuity)
         local scriptUrl = "https://raw.githubusercontent.com/SubbyDubby/Roblox-Rift-Scanner/main/Rift.lua"
-        local saveData = "currentIndex = " .. currentIndex
-        
-        -- Queue script to run after teleport using Swift-specific method
         pcall(function()
             if syn and syn.queue_on_teleport then
-                syn.queue_on_teleport(string.format([[
-                    loadstring(game:HttpGet("%s"))()
-                    %s
-                ]], scriptUrl, saveData))
+                syn.queue_on_teleport('loadstring(game:HttpGet("' .. scriptUrl .. '"))()')
             elseif queue_on_teleport then
-                queue_on_teleport(string.format([[
-                    loadstring(game:HttpGet("%s"))()
-                    %s
-                ]], scriptUrl, saveData))
+                queue_on_teleport('loadstring(game:HttpGet("' .. scriptUrl .. '"))()')
             end
         end)
         
-        -- Use Swift's specific teleport methods
-        local teleported = false
-        
-        pcall(function()
-            if getgenv().Swift and getgenv().Swift.Server.Join then
-                getgenv().Swift.Server.Join(PLACE_ID, nextJobId)
-                teleported = true
-            end
+        -- Use the teleport method you confirmed works
+        local success, teleportError = pcall(function()
+            return game:GetService('TeleportService'):TeleportToPlaceInstance(PLACE_ID, nextJobId, game.Players.LocalPlayer)
         end)
         
-        if not teleported then
-            pcall(function()
-                if syn and syn.join_game then
-                    syn.join_game(PLACE_ID, nextJobId)
-                    teleported = true
-                end
-            end)
-        end
-        
-        if not teleported then
-            pcall(function()
-                if game and type(game.JoinGameInstance) == "function" then
-                    game:JoinGameInstance(PLACE_ID, nextJobId)
-                    teleported = true
-                end
-            end)
-        end
-        
-        if not teleported and getgenv().joinServer then
-            pcall(function()
-                getgenv().joinServer(PLACE_ID, nextJobId)
-                teleported = true
-            end)
-        end
-        
-        if not teleported then
-            log("All teleport methods failed! Trying next server...", "warn")
+        if not success then
+            log("Failed to teleport: " .. tostring(teleportError), "warn")
+            -- Try again with the next server
             task.delay(1, hop)
         end
     else
@@ -285,69 +285,46 @@ end
 -- Main execution starts here
 log("Rift Scanner starting...")
 
+-- Make sure we have required services
+if not game:GetService("TeleportService") then
+    log("TeleportService not available!", "error")
+    return
+end
+
 -- Check if game is loaded
-local gameLoaded = pcall(function() return game:IsLoaded() end) and game:IsLoaded()
-if gameLoaded then
+if game:IsLoaded() then
     log("Game is already loaded")
 else
     log("Waiting for game to load...")
-    
-    -- Use pcall to safely wait for game to load
-    pcall(function()
-        if not game:IsLoaded() then game.Loaded:Wait() end
-    end)
-    
-    log("Game loaded!")
+    game.Loaded:Wait()
 end
 
 -- Wait for character to load
-local characterLoaded = pcall(function() return LocalPlayer.Character ~= nil end) and LocalPlayer.Character ~= nil
-if characterLoaded then
+if LocalPlayer.Character then
     log("Character is already loaded")
 else
     log("Waiting for character to load...")
-    
-    -- Use pcall to safely wait for character
-    pcall(function()
-        if not LocalPlayer.Character then
-            local connection
-            connection = LocalPlayer.CharacterAdded:Connect(function()
-                characterLoaded = true
-                if connection then connection:Disconnect() end
-            end)
-            
-            -- Wait up to 10 seconds for character
-            local startTime = tick()
-            while not characterLoaded and tick() - startTime < 10 do
-                task.wait(0.1)
-            end
-        end
-    end)
-    
-    log("Character loaded or timed out")
+    LocalPlayer.CharacterAdded:Wait()
 end
 
 -- Reset scan flag for new server
 hasScanned = false
 
--- Wait a bit after joining before scanning to let rifts load
+-- Wait for rifts to load
 log("Waiting " .. scanDelay .. " seconds for rifts to load...")
 task.delay(scanDelay, function()
     scanRifts()
 end)
 
 -- Set up character added event for when we teleport
-pcall(function()
-    LocalPlayer.CharacterAdded:Connect(function()
-        log("Character added in new server!")
-        -- Reset scan flag for new server
-        hasScanned = false
-        
-        -- Wait a bit after joining before scanning to let rifts load
-        log("Waiting " .. scanDelay .. " seconds for rifts to load...")
-        task.delay(scanDelay, function()
-            scanRifts()
-        end)
+LocalPlayer.CharacterAdded:Connect(function()
+    log("Character added in new server!")
+    hasScanned = false
+    
+    -- Wait for rifts to load in new server
+    log("Waiting " .. scanDelay .. " seconds for rifts to load...")
+    task.delay(scanDelay, function()
+        scanRifts()
     end)
 end)
 
