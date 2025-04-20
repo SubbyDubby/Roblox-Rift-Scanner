@@ -1,10 +1,10 @@
 -- Fully Automatic AWP.GG Rift Scanner
--- Configuration (EDIT THESE)
-local WEBHOOK_URL = "https://discord.com/api/webhooks/1363251024210432164/B26f2Tvrl_QuigIZ5AJswcd1hYKPGxIHlYzUUu-cicdhF6kj2i5hrQi16-YK2-R7rk0Y" 
+-- Configuration
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1363251024210432164/B26f2Tvrl_QuigIZ5AJswcd1hYKPGxIHlYzUUu-cicdhF6kj2i5hrQi16-YK2-R7rk0Y"
 local WEBHOOK_URL_25X = "https://discord.com/api/webhooks/1363451259016712192/OIMNA2MKvtfFW2IZOj5zDyoqhDYFlV-uU1GARyJwWSPSVHQzDAvSThojSOf1n9f5E6de"
 local PLACE_ID = 85896571713843
 
--- Job IDs (sample, truncated)
+-- Insert your jobIds list here
 local jobIds = {
     "938bde92-e9ce-49d8-a670-754a19d644c0",
     "b604a000-9c77-4fc2-beeb-1246b08391f6",
@@ -872,39 +872,56 @@ local jobIds = {
     "d346bb24-e6d4-4da8-9788-5e8a69274f56",
 }
 
+-- Services
 local Players = game:GetService("Players")
-local HttpService = game:GetService("HttpService")
-local TeleportService = game:GetService("TeleportService")
-local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
 math.randomseed(tick() + os.time() + (Players.LocalPlayer.UserId or 0))
 for i = 1, math.random(5, 10) do math.random() end
 
+-- Initialize or restore state
 if not _G.RiftScanner then
-    local accountOffset = (Players.LocalPlayer.UserId % 997) or math.random(1, 997)
+    local accountOffset = Players.LocalPlayer.UserId % #jobIds
+    local baseRandom = math.random(1, #jobIds)
+    local combined = baseRandom + accountOffset
     _G.RiftScanner = {
-        CurrentIndex = (math.random(1, #jobIds) + accountOffset) % #jobIds,
+        CurrentIndex = ((combined - 1) % #jobIds) + 1,
         SentNotifications = {},
         AlreadyScannedServer = false
     }
-    if _G.RiftScanner.CurrentIndex == 0 then _G.RiftScanner.CurrentIndex = 1 end
 end
 
--- Add full webhook, scanning, dismiss, etc. functions here...
+-- Your full script continues here...
 
+-- (unchanged scanning / webhook logic)
+
+-- Auto-continuation script string
+local CONTINUATION_SCRIPT = [[
+_G.RiftScanner = _G.RiftScanner or {}
+_G.RiftScanner.SentNotifications = {}
+_G.RiftScanner.AlreadyScannedServer = false
+if not game:IsLoaded() then game.Loaded:Wait() end
+wait(5)
+spawn(function()
+    wait(3)
+    pcall(function()
+        for _, gui in pairs(game:GetService("CoreGui"):GetDescendants()) do
+            if (gui:IsA("TextButton") and (gui.Text:match("OK") or gui.Text:match("Okay") or gui.Text:match("Close"))) then
+                pcall(function() gui.MouseButton1Click:Fire() end)
+                pcall(function() gui:Destroy() end)
+            end
+        end
+    end)
+end)
+loadstring(game:HttpGet('https://raw.githubusercontent.com/SubbyDubby/Roblox-Rift-Scanner/main/Rift.lua'))()
+]]
+
+-- Modified hopToNextServer with continuous random index
 function hopToNextServer()
     local nextIndex = math.random(1, #jobIds)
     local nextJobId = jobIds[nextIndex]
     _G.RiftScanner.CurrentIndex = nextIndex
-
-    local scriptToQueue = string.format([[
-        _G.RiftScanner = _G.RiftScanner or {}
-        _G.RiftScanner.SentNotifications = {}
-        _G.RiftScanner.AlreadyScannedServer = false
-        wait(5)
-        loadstring(game:HttpGet('https://raw.githubusercontent.com/SubbyDubby/Roblox-Rift-Scanner/main/Rift.lua'))()
-    ]])
+    local scriptToQueue = string.format(CONTINUATION_SCRIPT, nextIndex)
 
     if getgenv().queue_on_teleport then
         getgenv().queue_on_teleport(scriptToQueue)
@@ -915,9 +932,39 @@ function hopToNextServer()
     end
 
     wait(1)
-    pcall(function()
-        TeleportService:TeleportToPlaceInstance(PLACE_ID, nextJobId, LocalPlayer)
+    spawn(function()
+        wait(15)
+        if game.JobId == game.JobId then
+            _G.RiftScanner.CurrentIndex = math.random(1, #jobIds)
+            hopToNextServer()
+        end
     end)
+
+    pcall(function()
+        for _, gui in pairs(game:GetService("CoreGui"):GetDescendants()) do
+            if (gui:IsA("TextButton") and (gui.Text:match("OK") or gui.Text:match("Okay") or gui.Text:match("Close"))) then
+                pcall(function() gui.MouseButton1Click:Fire() end)
+                pcall(function() gui:Destroy() end)
+            end
+        end
+    end)
+
+    pcall(function()
+        game:GetService("TeleportService"):TeleportToPlaceInstance(PLACE_ID, nextJobId, LocalPlayer)
+    end)
+    wait(3)
+    pcall(function()
+        game:GetService("TeleportService"):TeleportToPlaceInstance(PLACE_ID, nextJobId)
+    end)
+    wait(3)
+    if getgenv().teleport then
+        pcall(function()
+            getgenv().teleport(PLACE_ID, nextJobId)
+        end)
+    end
 end
 
--- Main scan/execute flow (also unchanged)
+-- Everything else stays unchanged from your current version
+-- Start scanning
+dismissErrorPopups()
+scanRifts()
