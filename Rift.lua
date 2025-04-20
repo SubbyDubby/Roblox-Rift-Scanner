@@ -1,4 +1,3 @@
-
 -- Fully Automatic AWP.GG Rift Scanner
 -- Configuration (EDIT THESE)
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1363251024210432164/B26f2Tvrl_QuigIZ5AJswcd1hYKPGxIHlYzUUu-cicdhF6kj2i5hrQi16-YK2-R7rk0Y" 
