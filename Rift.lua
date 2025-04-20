@@ -320,3 +320,25 @@ function hopToNextServer()
         hopToNextServer()
     end
 end
+-- Main execution starts here
+print("Rift Scanner started")
+print("Current server index: " .. _G.RiftScanner.CurrentIndex)
+
+-- Wait for game to load completely
+if not game:IsLoaded() then
+    print("Waiting for game to load...")
+    game.Loaded:Wait()
+end
+
+-- Wait for player character to load
+if not LocalPlayer.Character then
+    print("Waiting for character to load...")
+    LocalPlayer.CharacterAdded:Wait()
+end
+
+-- Wait a bit for everything to initialize
+print("Waiting 10 seconds before starting scan...")
+wait(10)
+
+-- Start scanning
+scanRifts()
