@@ -440,14 +440,24 @@ local jobIds = {
     "6750ad0e-8868-46ac-95bd-e7c621d7c952"
 }
 
+-- Services (needed for randomization)
+local Players = game:GetService("Players")
+
+-- Ensure truly random starting position
+math.randomseed(tick() + os.time() + (Players.LocalPlayer.UserId or 0))
+-- "Warm up" the random number generator
+for i = 1, math.random(5, 10) do math.random() end
+
 -- Initialize or restore global state
 if not _G.RiftScanner then
-    -- Start from a random job ID in the list
+    -- Start from a random job ID in the list, using account-specific randomization
+    local accountOffset = (Players.LocalPlayer.UserId % 997) or math.random(1, 997)
     _G.RiftScanner = {
-        CurrentIndex = math.random(1, #jobIds),
+        CurrentIndex = (math.random(1, #jobIds) + accountOffset) % #jobIds,
         SentNotifications = {},
         AlreadyScannedServer = false
     }
+    if _G.RiftScanner.CurrentIndex == 0 then _G.RiftScanner.CurrentIndex = 1 end
     print("Starting with random job ID index: " .. _G.RiftScanner.CurrentIndex)
 else
     print("Continuing from previous session")
