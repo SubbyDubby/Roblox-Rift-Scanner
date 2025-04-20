@@ -246,7 +246,7 @@ wait(5) -- Additional wait to ensure everything loads properly
 loadstring(game:HttpGet('https://raw.githubusercontent.com/SubbyDubby/Roblox-Rift-Scanner/main/Rift.lua'))()
 ]]
 
--- Hop to next server with advanced auto-continuation
+-- Hop to next server with advanced auto-continuation and error handling
 function hopToNextServer()
     local nextIndex = _G.RiftScanner.CurrentIndex + 1
     
@@ -265,7 +265,7 @@ function hopToNextServer()
             pcall(function()
                 getgenv().queue_on_teleport(scriptToQueue)
                 queueSuccess = true
-                print("Using AWP.GG queue_on_teleport")
+                print("Using AWP.GG queue on teleport")
             end)
         end
         
@@ -293,6 +293,9 @@ function hopToNextServer()
         
         -- Wait for queue_on_teleport to register
         wait(1)
+        
+        -- Set a flag to track if we need to try the next server
+        local shouldTryNextServer = true
         
         -- Attempt teleport with multiple methods
         print("Executing teleport...")
@@ -327,7 +330,35 @@ function hopToNextServer()
             end)
         end
         
-        if not teleportSuccess then
+        -- NEW: Set a timeout to catch failed teleports (Error 771, server full, etc.)
+        if teleportSuccess then
+            -- Create a failsafe timeout that will move to the next server
+            -- if teleport fails silently (like Error 771 or server full)
+            spawn(function()
+                wait(20) -- Wait 20 seconds for teleport
+                if shouldTryNextServer then
+                    print("Teleport timeout - may have failed silently. Moving to next server...")
+                    _G.RiftScanner.CurrentIndex = nextIndex
+                    hopToNextServer()
+                end
+            end)
+            
+            -- This code would run if teleport succeeds
+            -- (Prevents the timeout from triggering if teleport works)
+            spawn(function()
+                -- Track the current server ID to detect successful teleport
+                local currentJobId = game.JobId
+                wait(5) -- Wait 5 seconds
+                
+                -- If we're still in the same server, teleport failed silently
+                if game.JobId == currentJobId then
+                    print("Still in same server. Teleport likely failed. Moving to next server...")
+                    shouldTryNextServer = false -- Prevent timeout from also triggering
+                    _G.RiftScanner.CurrentIndex = nextIndex
+                    hopToNextServer()
+                end
+            end)
+        else
             print("All teleport methods failed! Moving to next server in list...")
             _G.RiftScanner.CurrentIndex = nextIndex
             wait(5)
@@ -339,26 +370,3 @@ function hopToNextServer()
         hopToNextServer()
     end
 end
-
--- Main execution starts here
-print("Rift Scanner started")
-print("Current server index: " .. _G.RiftScanner.CurrentIndex)
-
--- Wait for game to load completely
-if not game:IsLoaded() then
-    print("Waiting for game to load...")
-    game.Loaded:Wait()
-end
-
--- Wait for player character to load
-if not LocalPlayer.Character then
-    print("Waiting for character to load...")
-    LocalPlayer.CharacterAdded:Wait()
-end
-
--- Wait a bit for everything to initialize
-print("Waiting 10 seconds before starting scan...")
-wait(10)
-
--- Start scanning
-scanRifts()
