@@ -4,8 +4,6 @@ local WEBHOOK_URL = "https://discord.com/api/webhooks/1363251024210432164/B26f2T
 local WEBHOOK_URL_25X = "https://discord.com/api/webhooks/1363451259016712192/OIMNA2MKvtfFW2IZOj5zDyoqhDYFlV-uU1GARyJwWSPSVHQzDAvSThojSOf1n9f5E6de"
 local PLACE_ID = 85896571713843
 
--- You can add as many job IDs as you want here (300+ is fine)
-
 local jobIds = {
     "938bde92-e9ce-49d8-a670-754a19d644c0",
     "b604a000-9c77-4fc2-beeb-1246b08391f6",
@@ -873,20 +871,24 @@ local jobIds = {
     "d346bb24-e6d4-4da8-9788-5e8a69274f56",
 }
 
-math.randomseed(tick()) -- Add this line!
+math.randomseed(tick())
 
 -- Initialize or restore global state
 if not _G.RiftScanner then
-    -- Start from a random job ID in the list
     _G.RiftScanner = {
-        CurrentIndex = math.random(1, #jobIds),
         SentNotifications = {},
         AlreadyScannedServer = false
     }
-    print("Starting with random job ID index: " .. _G.RiftScanner.CurrentIndex)
+    print("Starting new RiftScanner session")
 else
     print("Continuing from previous session")
 end
+
+-- Always pick a random job ID every time you want
+local randomIndex = math.random(1, #jobIds)
+_G.RiftScanner.CurrentIndex = randomIndex
+
+print("Picked random job ID index: " .. _G.RiftScanner.CurrentIndex)
 
 -- Services
 local Workspace = game:GetService("Workspace")
