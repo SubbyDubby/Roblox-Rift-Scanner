@@ -1,10 +1,11 @@
 -- Fully Automatic AWP.GG Rift Scanner
 -- Configuration (EDIT THESE)
-local WEBHOOK_URL = "https://discord.com/api/webhooks/1363251024210432164/B26f2Tvrl_QuigIZ5AJswcd1hYKPGxIHlYzUUu-cicdhF6kj2i5hrQi16-YK2-R7rk0Y"
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1363251024210432164/B26f2Tvrl_QuigIZ5AJswcd1hYKPGxIHlYzUUu-cicdhF6kj2i5hrQi16-YK2-R7rk0Y" 
 local WEBHOOK_URL_25X = "https://discord.com/api/webhooks/1363451259016712192/OIMNA2MKvtfFW2IZOj5zDyoqhDYFlV-uU1GARyJwWSPSVHQzDAvSThojSOf1n9f5E6de"
 local PLACE_ID = 85896571713843
 
--- JOB IDS GO HERE
+-- You can add as many job IDs as you want here (300+ is fine)
+
 local jobIds = {
     "938bde92-e9ce-49d8-a670-754a19d644c0",
     "b604a000-9c77-4fc2-beeb-1246b08391f6",
@@ -872,142 +873,373 @@ local jobIds = {
     "d346bb24-e6d4-4da8-9788-5e8a69274f56",
 }
 
+math.randomseed(tick()) -- Add this line!
+
+-- Initialize or restore global state
+if not _G.RiftScanner then
+    -- Start from a random job ID in the list
+    _G.RiftScanner = {
+        CurrentIndex = math.random(1, #jobIds),
+        SentNotifications = {},
+        AlreadyScannedServer = false
+    }
+    print("Starting with random job ID index: " .. _G.RiftScanner.CurrentIndex)
+else
+    print("Continuing from previous session")
+end
+
 -- Services
+local Workspace = game:GetService("Workspace")
 local HttpService = game:GetService("HttpService")
-local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
+local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
--- Unique account-based ID logic
-local TOTAL_ACCOUNTS = 10
-local accountId = LocalPlayer.UserId or math.random(100000000, 999999999)
-
-if type(accountId) ~= "number" then
-    local hash = 0
-    for i = 1, #tostring(accountId) do
-        hash = ((hash << 5) - hash) + string.byte(tostring(accountId), i)
-        hash = hash & hash
-    end
-    accountId = math.abs(hash)
-end
-
-local accountIndex = (accountId % TOTAL_ACCOUNTS) + 1
-print("This is account " .. accountIndex .. " of " .. TOTAL_ACCOUNTS)
-
--- Assign this account its job subset
-local myJobIds = {}
-for i = accountIndex, #jobIds, TOTAL_ACCOUNTS do
-    table.insert(myJobIds, jobIds[i])
-end
-jobIds = myJobIds
-
--- Global state
-_G.RiftScanner = _G.RiftScanner or {
-    CurrentIndex = (accountId % #jobIds) + 1,
-    SentNotifications = {},
-    AlreadyScannedServer = false
-}
-
-print("Starting at index: " .. _G.RiftScanner.CurrentIndex)
-
--- Request
+-- Get the appropriate request function
 local request = http_request or request or (syn and syn.request) or (fluxus and fluxus.request) or getgenv().request
 if not request then
-    warn("No request function available.")
+    print("ERROR: No HTTP request function found!")
     return
 end
 
--- Webhook senders
-local function sendWebhook(title, fields, is25x)
+-- Reduce console spam by limiting log messages
+local debugMode = false
+local function log(message, forceShow)
+    if debugMode or forceShow then
+        print(message)
+    end
+end
+
+-- Send webhook function
+local function sendWebhook(title, fields)
+    log("Sending webhook: " .. title, true)
+    
     local embed = {
         title = title,
         fields = fields,
-        color = is25x and 16711680 or 10597128,
+        color = 10597128,
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
-    local payload = HttpService:JSONEncode({ embeds = { embed } })
-    local url = is25x and WEBHOOK_URL_25X or WEBHOOK_URL
 
-    pcall(function()
-        request({
-            Url = url,
+    local payload = HttpService:JSONEncode({ embeds = { embed } })
+
+    local success, response = pcall(function()
+        return request({
+            Url = WEBHOOK_URL,
             Method = "POST",
             Headers = { ["Content-Type"] = "application/json" },
             Body = payload
         })
     end)
+    
+    if success then
+        log("Webhook sent successfully!")
+    else
+        log("Failed to send webhook: " .. tostring(response), true)
+    end
 end
 
--- Rift Scanner Logic
-local function scanRifts()
-    if _G.RiftScanner.AlreadyScannedServer then return end
-    local Workspace = game:GetService("Workspace")
-    local riftFolder = Workspace:FindFirstChild("Rendered") and Workspace.Rendered:FindFirstChild("Rifts")
-    if not riftFolder then return end
+-- Special webhook function for 25x multipliers
+local function send25xWebhook(title, fields)
+    log("Sending 25x webhook: " .. title, true)
+    
+    local embed = {
+        title = title,
+        fields = fields,
+        color = 16711680, -- Bright red color for emphasis
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
 
-    local found = false
-    local seen = {}
+    local payload = HttpService:JSONEncode({ embeds = { embed } })
 
-    for _, rift in ipairs(riftFolder:GetChildren()) do
-        local gui = rift:FindFirstChild("Display") and rift.Display:FindFirstChild("SurfaceGui")
-        if not gui then continue end
+    local success, response = pcall(function()
+        return request({
+            Url = WEBHOOK_URL_25X,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = payload
+        })
+    end)
+    
+    if success then
+        log("25x webhook sent successfully!")
+    else
+        log("Failed to send 25x webhook: " .. tostring(response), true)
+    end
+end
 
-        local timer = gui:FindFirstChild("Timer") and gui.Timer.Text
-        local luck = gui:FindFirstChild("Icon") and gui.Icon:FindFirstChild("Luck") and gui.Icon.Luck.Text
-        if not timer or timer == "" then continue end
-
-        local y = rift:GetPivot().Position.Y
-        local key = rift.Name .. "|" .. timer .. "|" .. (luck or "n/a") .. "|" .. y
-        seen[key] = true
-
-        if not _G.RiftScanner.SentNotifications[key] then
-            _G.RiftScanner.SentNotifications[key] = true
-            local is25x = luck and luck:lower():find("25") ~= nil
-            sendWebhook(is25x and "🌈 25x MULTIPLIER RIFT FOUND!" or "🌈 Rift Detected!", {
-                { name = "Egg", value = rift.Name, inline = true },
-                { name = "Multiplier", value = luck or "n/a", inline = true },
-                { name = "Time Left", value = timer, inline = true },
-                { name = "Height (Y)", value = tostring(math.floor(y)), inline = true },
-                { name = "Join Server", value = "[Click to Join](https://slayervalue.com/roblox/join_game.php?placeId=" .. PLACE_ID .. "&jobId=" .. game.JobId .. ")", inline = false }
-            }, is25x)
+-- Function to auto-dismiss error popups
+local function dismissErrorPopups()
+    -- Try to find common error popups and dismiss them
+    spawn(function()
+        while wait(1) do
+            -- Look for popup GUIs that might contain OK buttons
+            pcall(function()
+                for _, gui in pairs(game:GetService("CoreGui"):GetDescendants()) do
+                    -- Look for buttons with text like "OK", "Okay", "Close", etc.
+                    if (gui:IsA("TextButton") and (gui.Text:match("OK") or gui.Text:match("Okay") or gui.Text:match("Close"))) then
+                        log("Found popup button, attempting to click...", true)
+                        pcall(function() gui.MouseButton1Click:Fire() end)
+                        pcall(function() gui:Destroy() end)
+                    end
+                end
+                
+                -- Check player GUI as well
+                if LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui") then
+                    for _, gui in pairs(LocalPlayer.PlayerGui:GetDescendants()) do
+                        if (gui:IsA("TextButton") and (gui.Text:match("OK") or gui.Text:match("Okay") or gui.Text:match("Close"))) then
+                            log("Found player GUI popup button, attempting to click...", true)
+                            pcall(function() gui.MouseButton1Click:Fire() end)
+                        end
+                    end
+                end
+            end)
         end
-        found = true
+    end)
+end
+
+-- Scan for rifts
+local function scanRifts()
+    -- Skip scanning if we already scanned this server
+    if _G.RiftScanner.AlreadyScannedServer then
+        log("This server was already scanned, skipping to next server...", true)
+        wait(2) -- Brief wait before hopping
+        hopToNextServer()
+        return
+    end
+    
+    log("Scanning for rifts...", true)
+    local foundRift = false
+    local currentSeen = {}
+
+    -- Look for the rifts folder
+    local riftFolder = Workspace:FindFirstChild("Rendered") and Workspace.Rendered:FindFirstChild("Rifts")
+    if not riftFolder then 
+        log("Rifts folder not found", true)
+    else
+        log("Rifts folder found, checking for rifts...", true)
+        
+        -- Loop through all rifts
+        for _, rift in pairs(riftFolder:GetChildren()) do
+            if not rift:IsA("Model") then continue end
+
+            local name = rift.Name:lower()
+            local gui = rift:FindFirstChild("Display") and rift.Display:FindFirstChild("SurfaceGui")
+            if not gui then continue end
+
+            local timerLabel = gui:FindFirstChild("Timer")
+            local luckLabel = gui:FindFirstChild("Icon") and gui.Icon:FindFirstChild("Luck")
+
+            local timer = timerLabel and timerLabel.Text or nil
+            local multiplier = luckLabel and luckLabel.Text or nil
+
+            if not timer or timer == "" then continue end
+
+            -- Y Position for height
+            local y = rift:GetPivot().Position.Y
+            local key = name .. "|" .. timer .. "|" .. (multiplier or "n/a") .. "|" .. y
+            currentSeen[key] = true
+            foundRift = true
+
+            if not _G.RiftScanner.SentNotifications[key] then
+                _G.RiftScanner.SentNotifications[key] = true
+
+                -- More robust pattern matching for 25x
+                if multiplier and (string.find(tostring(multiplier):lower(), "25%s*x") or string.find(tostring(multiplier), "25")) then
+                    -- 25x multiplier found - use special webhook
+                    log("25x multiplier detected! Attempting to send to webhook...", true)
+                    send25xWebhook("🌈 25x MULTIPLIER RIFT FOUND!", {
+                        { name = "Egg", value = name, inline = true },
+                        { name = "Multiplier", value = multiplier, inline = true },
+                        { name = "Time Left", value = timer, inline = true },
+                        { name = "Height (Y)", value = tostring(math.floor(y)), inline = true },
+                        { name = "Join Server", value = "[Click to Join](https://slayervalue.com/roblox/join_game.php?placeId=" .. PLACE_ID .. "&jobId=" .. game.JobId .. ")", inline = false }
+                    })
+                elseif multiplier then
+                    -- Regular multiplier rift
+                    log("Found regular rift: " .. name .. " with " .. multiplier .. " luck", true)
+                    sendWebhook("🌈 Rift Detected!", {
+                        { name = "Egg", value = name, inline = true },
+                        { name = "Multiplier", value = multiplier, inline = true },
+                        { name = "Time Left", value = timer, inline = true },
+                        { name = "Height (Y)", value = tostring(math.floor(y)), inline = true },
+                        { name = "Server ID", value = game.JobId, inline = false }
+                    })
+                else
+                    -- Chest rift
+                    log("Found chest: " .. name, true)
+                    sendWebhook("🎁 Chest Detected!", {
+                        { name = "Chest", value = name, inline = true },
+                        { name = "Time Left", value = timer, inline = true },
+                        { name = "Height (Y)", value = tostring(math.floor(y)), inline = true },
+                        { name = "Server ID", value = game.JobId, inline = false }
+                    })
+                end
+            end
+        end
+
+        -- Clear despawned entries
+        for key in pairs(_G.RiftScanner.SentNotifications) do
+            if not currentSeen[key] then
+                _G.RiftScanner.SentNotifications[key] = nil
+            end
+        end
     end
 
-    for key in pairs(_G.RiftScanner.SentNotifications) do
-        if not seen[key] then _G.RiftScanner.SentNotifications[key] = nil end
+    if not foundRift then
+        log("No rifts found in this server", true)
     end
-
+    
+    -- Mark this server as scanned to prevent rescanning
     _G.RiftScanner.AlreadyScannedServer = true
+    
+    -- After scanning, wait before hopping
+    log("Waiting 15 seconds before moving to next server...", true)
     wait(15)
     hopToNextServer()
 end
 
--- Hopping Logic
+-- Auto-continuation script for the next server
+local CONTINUATION_SCRIPT = [[
+-- Initialize global variables
+_G.RiftScanner = _G.RiftScanner or {}
+_G.RiftScanner.CurrentIndex = %d
+_G.RiftScanner.SentNotifications = {}
+_G.RiftScanner.AlreadyScannedServer = false
+
+-- Wait for game to load
+if not game:IsLoaded() then game.Loaded:Wait() end
+wait(5) -- Additional wait to ensure everything loads properly
+
+-- Start auto-dismiss for popups
+spawn(function()
+    -- Wait a bit before trying to dismiss popups
+    wait(3)
+    -- Look for popup GUIs that might contain OK buttons
+    pcall(function()
+        for _, gui in pairs(game:GetService("CoreGui"):GetDescendants()) do
+            if (gui:IsA("TextButton") and (gui.Text:match("OK") or gui.Text:match("Okay") or gui.Text:match("Close"))) then
+                pcall(function() gui.MouseButton1Click:Fire() end)
+                pcall(function() gui:Destroy() end)
+            end
+        end
+    end)
+end)
+
+-- Load and execute main script
+loadstring(game:HttpGet('https://raw.githubusercontent.com/SubbyDubby/Roblox-Rift-Scanner/main/Rift.lua'))()
+]]
+
+-- Hop to next server with improved error handling
 function hopToNextServer()
     local nextIndex = _G.RiftScanner.CurrentIndex + 1
-    if nextIndex > #jobIds then nextIndex = 1 end
-    _G.RiftScanner.CurrentIndex = nextIndex
-
-    local script = string.format([[
-        _G.RiftScanner = { CurrentIndex = %d, SentNotifications = {}, AlreadyScannedServer = false }
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/SubbyDubby/Roblox-Rift-Scanner/main/Rift.lua"))()
-    ]], nextIndex)
-
-    if queue_on_teleport then
-        queue_on_teleport(script)
-    elseif getgenv().queue_on_teleport then
-        getgenv().queue_on_teleport(script)
+    if nextIndex > #jobIds then
+        nextIndex = 1 -- Loop back to beginning when reaching the end
     end
-
+    
+    local nextJobId = jobIds[nextIndex]
+    log("Hopping to server " .. nextIndex .. " with JobID: " .. nextJobId, true)
+    
+    -- Update the current index immediately
+    _G.RiftScanner.CurrentIndex = nextIndex
+    
+    -- Create continuation script
+    local scriptToQueue = string.format(CONTINUATION_SCRIPT, nextIndex)
+    
+    -- Queue script to run after teleport
+    if getgenv().queue_on_teleport then
+        getgenv().queue_on_teleport(scriptToQueue)
+        log("Using AWP.GG queue_on_teleport")
+    elseif queue_on_teleport then
+        queue_on_teleport(scriptToQueue)
+        log("Using standard queue_on_teleport")
+    elseif syn and syn.queue_on_teleport then
+        syn.queue_on_teleport(scriptToQueue)
+        log("Using Synapse queue_on_teleport")
+    end
+    
+    -- Wait for queue_on_teleport to register
     wait(1)
-    TeleportService:TeleportToPlaceInstance(PLACE_ID, jobIds[nextIndex], LocalPlayer)
+    
+    -- Set up a failsafe timer to move to the next server
+    spawn(function()
+        wait(15) -- Wait 15 seconds
+        
+        -- Check if we're still in the same server
+        local currentServer = game.JobId
+        if game.JobId == currentServer then
+            log("Teleport likely failed or showing error. Moving to next server...", true)
+            -- Don't reload the script, just increment the index and try again
+            _G.RiftScanner.CurrentIndex = nextIndex + 1
+            if _G.RiftScanner.CurrentIndex > #jobIds then
+                _G.RiftScanner.CurrentIndex = 1
+            end
+            hopToNextServer()
+        end
+    end)
+    
+    -- Auto-dismiss any popups before teleporting
+    pcall(function()
+        for _, gui in pairs(game:GetService("CoreGui"):GetDescendants()) do
+            if (gui:IsA("TextButton") and (gui.Text:match("OK") or gui.Text:match("Okay") or gui.Text:match("Close"))) then
+                pcall(function() gui.MouseButton1Click:Fire() end)
+                pcall(function() gui:Destroy() end)
+            end
+        end
+    end)
+    
+    -- Attempt teleport
+    log("Executing teleport...", true)
+    pcall(function()
+        game:GetService("TeleportService"):TeleportToPlaceInstance(PLACE_ID, nextJobId, LocalPlayer)
+    end)
+    
+    -- If teleport call returns (didn't throw error), wait a moment and try next method
+    wait(3)
+    
+    -- Try alternative method if we're still here
+    pcall(function()
+        TeleportService:TeleportToPlaceInstance(PLACE_ID, nextJobId)
+    end)
+    
+    -- Still here? Try one last method
+    wait(3)
+    if getgenv().teleport then
+        pcall(function()
+            getgenv().teleport(PLACE_ID, nextJobId)
+        end)
+    end
+    
+    -- If we get here, all teleport methods returned without error
+    -- but we might still be showing an error dialog
+    log("All teleport methods attempted. Waiting for failsafe timer...", true)
 end
 
--- Wait for game and start
-if not game:IsLoaded() then game.Loaded:Wait() end
-if not LocalPlayer.Character then LocalPlayer.CharacterAdded:Wait() end
+-- Start auto-dismiss for popups
+dismissErrorPopups()
+
+-- Main execution starts here
+log("Rift Scanner started", true)
+log("Current server index: " .. _G.RiftScanner.CurrentIndex, true)
+
+-- Wait for game to load completely
+if not game:IsLoaded() then
+    log("Waiting for game to load...", true)
+    game.Loaded:Wait()
+end
+
+-- Wait for player character to load
+if not LocalPlayer.Character then
+    log("Waiting for character to load...", true)
+    LocalPlayer.CharacterAdded:Wait()
+end
+
+-- Wait a bit for everything to initialize
+log("Waiting 10 seconds before starting scan...", true)
 wait(10)
 
+-- Reset AlreadyScannedServer flag for this run
 _G.RiftScanner.AlreadyScannedServer = false
+
+-- Start scanning
 scanRifts()
