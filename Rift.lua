@@ -1,6 +1,6 @@
 -- Fully Automatic AWP.GG Rift Scanner
 -- Configuration (EDIT THESE)
-local WEBHOOK_URL = "https://discord.com/api/webhooks/1363251024210432164/B26f2Tvrl_QuigIZ5AJswcd1hYKPGxIHlYzUUu-cicdhF6kj2i5hrQi16-YK2-R7rk0Y"
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1363251024210432164/B26f2Tvrl_QuigIZ5AJswcd1hYKPGxIHlYzUUu-cicdhF6kj2i5hrQi16-YK2-R7rk0Y" -- Replace with your actual webhook
 local PLACE_ID = 85896571713843
 local jobIds = {
     "938bde92-e9ce-49d8-a670-754a19d644c0",
@@ -868,9 +868,9 @@ local jobIds = {
     "4388f8b0-5a9b-4764-a9e7-e200add2ae91",
     "d346bb24-e6d4-4da8-9788-5e8a69274f56",
 }
-
 -- Initialize or restore global state
 _G.RiftScanner = _G.RiftScanner or {
+    CurrentIndex = 1,
     SentNotifications = {}
 }
 
@@ -881,7 +881,7 @@ local TeleportService = game:GetService("TeleportService")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
--- HTTP request
+-- Get the appropriate request function
 local request = http_request or request or (syn and syn.request) or (fluxus and fluxus.request) or getgenv().request
 if not request then
     print("ERROR: No HTTP request function found!")
@@ -890,6 +890,8 @@ end
 
 -- Send webhook function
 local function sendWebhook(title, fields)
+    print("Sending webhook: " .. title)
+    
     local embed = {
         title = title,
         fields = fields,
@@ -899,23 +901,36 @@ local function sendWebhook(title, fields)
 
     local payload = HttpService:JSONEncode({ embeds = { embed } })
 
-    pcall(function()
-        request({
+    local success, response = pcall(function()
+        return request({
             Url = WEBHOOK_URL,
             Method = "POST",
             Headers = { ["Content-Type"] = "application/json" },
             Body = payload
         })
     end)
+    
+    if success then
+        print("Webhook sent successfully!")
+    else
+        print("Failed to send webhook: " .. tostring(response))
+    end
 end
 
 -- Scan for rifts
 local function scanRifts()
+    print("Scanning for rifts...")
     local foundRift = false
     local currentSeen = {}
 
+    -- Look for the rifts folder
     local riftFolder = Workspace:FindFirstChild("Rendered") and Workspace.Rendered:FindFirstChild("Rifts")
-    if riftFolder then
+    if not riftFolder then 
+        print("Rifts folder not found")
+    else
+        print("Rifts folder found, checking for rifts...")
+        
+        -- Loop through all rifts
         for _, rift in pairs(riftFolder:GetChildren()) do
             if not rift:IsA("Model") then continue end
 
@@ -931,6 +946,7 @@ local function scanRifts()
 
             if not timer or timer == "" then continue end
 
+            -- Y Position for height
             local y = rift:GetPivot().Position.Y
             local key = name .. "|" .. timer .. "|" .. (multiplier or "n/a") .. "|" .. y
             currentSeen[key] = true
@@ -939,16 +955,28 @@ local function scanRifts()
             if not _G.RiftScanner.SentNotifications[key] then
                 _G.RiftScanner.SentNotifications[key] = true
 
-                sendWebhook(multiplier and "🌈 Rift Detected!" or "🎁 Chest Detected!", {
-                    { name = multiplier and "Egg" or "Chest", value = name, inline = true },
-                    multiplier and { name = "Multiplier", value = multiplier, inline = true } or nil,
-                    { name = "Time Left", value = timer, inline = true },
-                    { name = "Height (Y)", value = tostring(math.floor(y)), inline = true },
-                    { name = "Server ID", value = game.JobId, inline = false }
-                })
+                if multiplier then
+                    print("Found rift: " .. name .. " with " .. multiplier .. " luck")
+                    sendWebhook("🌈 Rift Detected!", {
+                        { name = "Egg", value = name, inline = true },
+                        { name = "Multiplier", value = multiplier, inline = true },
+                        { name = "Time Left", value = timer, inline = true },
+                        { name = "Height (Y)", value = tostring(math.floor(y)), inline = true },
+                        { name = "Server ID", value = game.JobId, inline = false }
+                    })
+                else
+                    print("Found chest: " .. name)
+                    sendWebhook("🎁 Chest Detected!", {
+                        { name = "Chest", value = name, inline = true },
+                        { name = "Time Left", value = timer, inline = true },
+                        { name = "Height (Y)", value = tostring(math.floor(y)), inline = true },
+                        { name = "Server ID", value = game.JobId, inline = false }
+                    })
+                end
             end
         end
 
+        -- Clear despawned entries
         for key in pairs(_G.RiftScanner.SentNotifications) do
             if not currentSeen[key] then
                 _G.RiftScanner.SentNotifications[key] = nil
@@ -956,34 +984,124 @@ local function scanRifts()
         end
     end
 
+    if not foundRift then
+        print("No rifts found in this server")
+    end
+    
+    -- After scanning, wait 15 seconds before hopping
+    print("Waiting 15 seconds before moving to next server...")
     wait(15)
-    hopToRandomServer()
+    hopToNextServer()
 end
 
--- Auto-continuation script
+-- Auto-continuation script for the next server
 local CONTINUATION_SCRIPT = [[
+-- Initialize global variables
+_G.RiftScanner = _G.RiftScanner or {}
+_G.RiftScanner.CurrentIndex = %d
+_G.RiftScanner.SentNotifications = {}
+
+-- Wait for game to load
 if not game:IsLoaded() then game.Loaded:Wait() end
-wait(5)
+wait(5) -- Additional wait to ensure everything loads properly
+
+-- Load and execute main script
 loadstring(game:HttpGet('https://raw.githubusercontent.com/SubbyDubby/Roblox-Rift-Scanner/main/Rift.lua'))()
 ]]
 
--- Hop to random server
-function hopToRandomServer()
-    local randomIndex = math.random(1, #jobIds)
-    local nextJobId = jobIds[randomIndex]
-
-    if queue_on_teleport then
-        queue_on_teleport(CONTINUATION_SCRIPT)
-    elseif syn and syn.queue_on_teleport then
-        syn.queue_on_teleport(CONTINUATION_SCRIPT)
+-- Hop to next server with advanced auto-continuation and error handling
+-- Hop to next server with improved error handling
+function hopToNextServer()
+    local nextIndex = _G.RiftScanner.CurrentIndex + 1
+    
+    if nextIndex <= #jobIds then
+        local nextJobId = jobIds[nextIndex]
+        print("Hopping to server " .. nextIndex .. " with JobID: " .. nextJobId)
+        
+        -- Update the current index immediately
+        _G.RiftScanner.CurrentIndex = nextIndex
+        
+        -- Create continuation script
+        local scriptToQueue = string.format(CONTINUATION_SCRIPT, nextIndex)
+        
+        -- Queue script to run after teleport
+        if getgenv().queue_on_teleport then
+            getgenv().queue_on_teleport(scriptToQueue)
+            print("Using AWP.GG queue_on_teleport")
+        elseif queue_on_teleport then
+            queue_on_teleport(scriptToQueue)
+            print("Using standard queue_on_teleport")
+        elseif syn and syn.queue_on_teleport then
+            syn.queue_on_teleport(scriptToQueue)
+            print("Using Synapse queue_on_teleport")
+        end
+        
+        -- Wait for queue_on_teleport to register
+        wait(1)
+        
+        -- Set up a failsafe timer to move to the next server
+        spawn(function()
+            wait(15) -- Wait 15 seconds
+            
+            -- Check if we're still in the same server
+            local currentServer = game.JobId
+            if game.JobId == currentServer then
+                print("Teleport likely failed or showing error. Moving to next server...")
+                loadstring(game:HttpGet('https://raw.githubusercontent.com/SubbyDubby/Roblox-Rift-Scanner/main/Rift.lua'))()
+            end
+        end)
+        
+        -- Attempt teleport
+        print("Executing teleport...")
+        pcall(function()
+            game:GetService("TeleportService"):TeleportToPlaceInstance(PLACE_ID, nextJobId, LocalPlayer)
+        end)
+        
+        -- If teleport call returns (didn't throw error), wait a moment and try next method
+        wait(3)
+        
+        -- Try alternative method if we're still here
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(PLACE_ID, nextJobId)
+        end)
+        
+        -- Still here? Try one last method
+        wait(3)
+        if getgenv().teleport then
+            pcall(function()
+                getgenv().teleport(PLACE_ID, nextJobId)
+            end)
+        end
+        
+        -- If we get here, all teleport methods returned without error
+        -- but we might still be showing an error dialog
+        print("All teleport methods attempted. Waiting for failsafe timer...")
+        
+    else
+        print("Finished scanning all servers in the list. Restarting from the beginning...")
+        _G.RiftScanner.CurrentIndex = 0
+        hopToNextServer()
     end
+end
+-- Main execution starts here
+print("Rift Scanner started")
+print("Current server index: " .. _G.RiftScanner.CurrentIndex)
 
-    wait(1)
-    TeleportService:TeleportToPlaceInstance(PLACE_ID, nextJobId, LocalPlayer)
+-- Wait for game to load completely
+if not game:IsLoaded() then
+    print("Waiting for game to load...")
+    game.Loaded:Wait()
 end
 
--- Main execution
-if not game:IsLoaded() then game.Loaded:Wait() end
-if not LocalPlayer.Character then LocalPlayer.CharacterAdded:Wait() end
+-- Wait for player character to load
+if not LocalPlayer.Character then
+    print("Waiting for character to load...")
+    LocalPlayer.CharacterAdded:Wait()
+end
+
+-- Wait a bit for everything to initialize
+print("Waiting 10 seconds before starting scan...")
 wait(10)
+
+-- Start scanning
 scanRifts()
