@@ -1,6 +1,8 @@
 -- Fully Automatic AWP.GG Rift Scanner
 -- Configuration (EDIT THESE)
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1363251024210432164/B26f2Tvrl_QuigIZ5AJswcd1hYKPGxIHlYzUUu-cicdhF6kj2i5hrQi16-YK2-R7rk0Y" -- Replace with your actual webhook
+-- Add the 25x webhook URL (you can use the same URL if you want)
+local WEBHOOK_URL_25X = "https://discord.com/api/webhooks/1363451259016712192/OIMNA2MKvtfFW2IZOj5zDyoqhDYFlV-uU1GARyJwWSPSVHQzDAvSThojSOf1n9f5E6de" -- Replace with your special webhook for 25x rifts
 local PLACE_ID = 85896571713843
 local jobIds = {
     "ea791028-4b66-4d97-899d-f9b418eab530",
@@ -125,7 +127,7 @@ if not request then
     return
 end
 
--- Send webhook function
+-- Send webhook function (unchanged)
 local function sendWebhook(title, fields)
     print("Sending webhook: " .. title)
     
@@ -153,6 +155,42 @@ local function sendWebhook(title, fields)
         print("Failed to send webhook: " .. tostring(response))
     end
 end
+
+-- Special webhook function for 25x multipliers
+local function send25xWebhook(title, fields)
+    print("Sending 25x webhook: " .. title)
+    
+    local embed = {
+        title = title,
+        fields = fields,
+        color = 16711680, -- Bright red color for emphasis
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+
+    local payload = HttpService:JSONEncode({ embeds = { embed } })
+
+    local success, response = pcall(function()
+        return request({
+            Url = WEBHOOK_URL_25X,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = payload
+        })
+    end)
+    
+    if success then
+        print("25x webhook sent successfully!")
+    else
+        print("Failed to send 25x webhook: " .. tostring(response))
+    end
+end
+
+-- Optional: Uncomment to test the 25x webhook
+--send25xWebhook("TEST 25x WEBHOOK", {
+--    { name = "Test", value = "This is a test", inline = true },
+--    { name = "Join Server", value = "[Click to Join](https://slayervalue.com/roblox/join_game.php?placeId=" .. PLACE_ID .. "&jobId=test)", inline = false }
+--})
+--print("Test webhook sent")
 
 -- Scan for rifts
 local function scanRifts()
@@ -192,8 +230,23 @@ local function scanRifts()
             if not _G.RiftScanner.SentNotifications[key] then
                 _G.RiftScanner.SentNotifications[key] = true
 
-                if multiplier then
-                    print("Found rift: " .. name .. " with " .. multiplier .. " luck")
+                -- Debug print the multiplier
+                print("Checking multiplier:", multiplier)
+
+                -- More robust pattern matching for 25x
+                if multiplier and (string.find(tostring(multiplier):lower(), "25%s*x") or string.find(tostring(multiplier), "25")) then
+                    -- 25x multiplier found - use special webhook
+                    print("25x multiplier detected! Attempting to send to webhook...")
+                    send25xWebhook("🌈 25x MULTIPLIER RIFT FOUND!", {
+                        { name = "Egg", value = name, inline = true },
+                        { name = "Multiplier", value = multiplier, inline = true },
+                        { name = "Time Left", value = timer, inline = true },
+                        { name = "Height (Y)", value = tostring(math.floor(y)), inline = true },
+                        { name = "Join Server", value = "[Click to Join](https://slayervalue.com/roblox/join_game.php?placeId=" .. PLACE_ID .. "&jobId=" .. game.JobId .. ")", inline = false }
+                    })
+                elseif multiplier then
+                    -- Regular multiplier rift (unchanged)
+                    print("Found regular rift: " .. name .. " with " .. multiplier .. " luck")
                     sendWebhook("🌈 Rift Detected!", {
                         { name = "Egg", value = name, inline = true },
                         { name = "Multiplier", value = multiplier, inline = true },
@@ -202,6 +255,7 @@ local function scanRifts()
                         { name = "Server ID", value = game.JobId, inline = false }
                     })
                 else
+                    -- Chest rift (unchanged)
                     print("Found chest: " .. name)
                     sendWebhook("🎁 Chest Detected!", {
                         { name = "Chest", value = name, inline = true },
@@ -247,7 +301,6 @@ loadstring(game:HttpGet('https://raw.githubusercontent.com/SubbyDubby/Roblox-Rif
 ]]
 
 -- Hop to next server with advanced auto-continuation and error handling
--- Hop to next server with improved error handling
 function hopToNextServer()
     local nextIndex = _G.RiftScanner.CurrentIndex + 1
     
@@ -320,6 +373,7 @@ function hopToNextServer()
         hopToNextServer()
     end
 end
+
 -- Main execution starts here
 print("Rift Scanner started")
 print("Current server index: " .. _G.RiftScanner.CurrentIndex)
