@@ -868,6 +868,7 @@ local jobIds = {
     "4388f8b0-5a9b-4764-a9e7-e200add2ae91",
     "d346bb24-e6d4-4da8-9788-5e8a69274f56",
 }
+
 -- Initialize or restore global state
 _G.RiftScanner = _G.RiftScanner or {
     SentNotifications = {}
@@ -959,22 +960,22 @@ local function scanRifts()
     hopToRandomServer()
 end
 
--- Auto-continuation script
-local CONTINUATION_SCRIPT = [[
-if not game:IsLoaded() then game.Loaded:Wait() end
-wait(5)
-loadstring(game:HttpGet('https://raw.githubusercontent.com/SubbyDubby/Roblox-Rift-Scanner/main/Rift.lua'))()
-]]
-
 -- Hop to random server
 function hopToRandomServer()
-    local randomIndex = math.random(1, #jobIds)
-    local nextJobId = jobIds[randomIndex]
+    local nextJobId = jobIds[math.random(#jobIds)]
+
+    local CONTINUATION_SCRIPT = [[
+        if not game:IsLoaded() then game.Loaded:Wait() end
+        wait(5)
+        loadstring(game:HttpGet('https://raw.githubusercontent.com/SubbyDubby/Roblox-Rift-Scanner/refs/heads/main/Rift.lua'))()
+    ]]
 
     if queue_on_teleport then
         queue_on_teleport(CONTINUATION_SCRIPT)
     elseif syn and syn.queue_on_teleport then
         syn.queue_on_teleport(CONTINUATION_SCRIPT)
+    elseif getgenv().queue_on_teleport then
+        getgenv().queue_on_teleport(CONTINUATION_SCRIPT)
     end
 
     wait(1)
