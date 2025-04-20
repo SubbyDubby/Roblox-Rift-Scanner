@@ -1,11 +1,10 @@
-
 -- Fully Automatic AWP.GG Rift Scanner
 -- Configuration (EDIT THESE)
-local WEBHOOK_URL = "https://discord.com/api/webhooks/1363251024210432164/B26f2Tvrl_QuigIZ5AJswcd1hYKPGxIHlYzUUu-cicdhF6kj2i5hrQi16-YK2-R7rk0Y" 
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1363251024210432164/B26f2Tvrl_QuigIZ5AJswcd1hYKPGxIHlYzUUu-cicdhF6kj2i5hrQi16-YK2-R7rk0Y"
 local WEBHOOK_URL_25X = "https://discord.com/api/webhooks/1363451259016712192/OIMNA2MKvtfFW2IZOj5zDyoqhDYFlV-uU1GARyJwWSPSVHQzDAvSThojSOf1n9f5E6de"
 local PLACE_ID = 85896571713843
 
--- Job IDs (sample, truncated)
+-- JOB IDS GO HERE
 local jobIds = {
     "938bde92-e9ce-49d8-a670-754a19d644c0",
     "b604a000-9c77-4fc2-beeb-1246b08391f6",
@@ -873,52 +872,142 @@ local jobIds = {
     "d346bb24-e6d4-4da8-9788-5e8a69274f56",
 }
 
-local Players = game:GetService("Players")
+-- Services
 local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
-local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
-math.randomseed(tick() + os.time() + (Players.LocalPlayer.UserId or 0))
-for i = 1, math.random(5, 10) do math.random() end
+-- Unique account-based ID logic
+local TOTAL_ACCOUNTS = 10
+local accountId = LocalPlayer.UserId or math.random(100000000, 999999999)
 
-if not _G.RiftScanner then
-    local accountOffset = (Players.LocalPlayer.UserId % 997) or math.random(1, 997)
-    _G.RiftScanner = {
-        CurrentIndex = (math.random(1, #jobIds) + accountOffset) % #jobIds,
-        SentNotifications = {},
-        AlreadyScannedServer = false
-    }
-    if _G.RiftScanner.CurrentIndex == 0 then _G.RiftScanner.CurrentIndex = 1 end
+if type(accountId) ~= "number" then
+    local hash = 0
+    for i = 1, #tostring(accountId) do
+        hash = ((hash << 5) - hash) + string.byte(tostring(accountId), i)
+        hash = hash & hash
+    end
+    accountId = math.abs(hash)
 end
 
--- Add full webhook, scanning, dismiss, etc. functions here...
+local accountIndex = (accountId % TOTAL_ACCOUNTS) + 1
+print("This is account " .. accountIndex .. " of " .. TOTAL_ACCOUNTS)
 
-function hopToNextServer()
-    local nextIndex = math.random(1, #jobIds)
-    local nextJobId = jobIds[nextIndex]
-    _G.RiftScanner.CurrentIndex = nextIndex
+-- Assign this account its job subset
+local myJobIds = {}
+for i = accountIndex, #jobIds, TOTAL_ACCOUNTS do
+    table.insert(myJobIds, jobIds[i])
+end
+jobIds = myJobIds
 
-    local scriptToQueue = string.format([[
-        _G.RiftScanner = _G.RiftScanner or {}
-        _G.RiftScanner.SentNotifications = {}
-        _G.RiftScanner.AlreadyScannedServer = false
-        wait(5)
-        loadstring(game:HttpGet('https://raw.githubusercontent.com/SubbyDubby/Roblox-Rift-Scanner/main/Rift.lua'))()
-    ]])
+-- Global state
+_G.RiftScanner = _G.RiftScanner or {
+    CurrentIndex = (accountId % #jobIds) + 1,
+    SentNotifications = {},
+    AlreadyScannedServer = false
+}
 
-    if getgenv().queue_on_teleport then
-        getgenv().queue_on_teleport(scriptToQueue)
-    elseif queue_on_teleport then
-        queue_on_teleport(scriptToQueue)
-    elseif syn and syn.queue_on_teleport then
-        syn.queue_on_teleport(scriptToQueue)
-    end
+print("Starting at index: " .. _G.RiftScanner.CurrentIndex)
 
-    wait(1)
+-- Request
+local request = http_request or request or (syn and syn.request) or (fluxus and fluxus.request) or getgenv().request
+if not request then
+    warn("No request function available.")
+    return
+end
+
+-- Webhook senders
+local function sendWebhook(title, fields, is25x)
+    local embed = {
+        title = title,
+        fields = fields,
+        color = is25x and 16711680 or 10597128,
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+    local payload = HttpService:JSONEncode({ embeds = { embed } })
+    local url = is25x and WEBHOOK_URL_25X or WEBHOOK_URL
+
     pcall(function()
-        TeleportService:TeleportToPlaceInstance(PLACE_ID, nextJobId, LocalPlayer)
+        request({
+            Url = url,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = payload
+        })
     end)
 end
 
--- Main scan/execute flow (also unchanged)
+-- Rift Scanner Logic
+local function scanRifts()
+    if _G.RiftScanner.AlreadyScannedServer then return end
+    local Workspace = game:GetService("Workspace")
+    local riftFolder = Workspace:FindFirstChild("Rendered") and Workspace.Rendered:FindFirstChild("Rifts")
+    if not riftFolder then return end
+
+    local found = false
+    local seen = {}
+
+    for _, rift in ipairs(riftFolder:GetChildren()) do
+        local gui = rift:FindFirstChild("Display") and rift.Display:FindFirstChild("SurfaceGui")
+        if not gui then continue end
+
+        local timer = gui:FindFirstChild("Timer") and gui.Timer.Text
+        local luck = gui:FindFirstChild("Icon") and gui.Icon:FindFirstChild("Luck") and gui.Icon.Luck.Text
+        if not timer or timer == "" then continue end
+
+        local y = rift:GetPivot().Position.Y
+        local key = rift.Name .. "|" .. timer .. "|" .. (luck or "n/a") .. "|" .. y
+        seen[key] = true
+
+        if not _G.RiftScanner.SentNotifications[key] then
+            _G.RiftScanner.SentNotifications[key] = true
+            local is25x = luck and luck:lower():find("25") ~= nil
+            sendWebhook(is25x and "🌈 25x MULTIPLIER RIFT FOUND!" or "🌈 Rift Detected!", {
+                { name = "Egg", value = rift.Name, inline = true },
+                { name = "Multiplier", value = luck or "n/a", inline = true },
+                { name = "Time Left", value = timer, inline = true },
+                { name = "Height (Y)", value = tostring(math.floor(y)), inline = true },
+                { name = "Join Server", value = "[Click to Join](https://slayervalue.com/roblox/join_game.php?placeId=" .. PLACE_ID .. "&jobId=" .. game.JobId .. ")", inline = false }
+            }, is25x)
+        end
+        found = true
+    end
+
+    for key in pairs(_G.RiftScanner.SentNotifications) do
+        if not seen[key] then _G.RiftScanner.SentNotifications[key] = nil end
+    end
+
+    _G.RiftScanner.AlreadyScannedServer = true
+    wait(15)
+    hopToNextServer()
+end
+
+-- Hopping Logic
+function hopToNextServer()
+    local nextIndex = _G.RiftScanner.CurrentIndex + 1
+    if nextIndex > #jobIds then nextIndex = 1 end
+    _G.RiftScanner.CurrentIndex = nextIndex
+
+    local script = string.format([[
+        _G.RiftScanner = { CurrentIndex = %d, SentNotifications = {}, AlreadyScannedServer = false }
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/SubbyDubby/Roblox-Rift-Scanner/main/Rift.lua"))()
+    ]], nextIndex)
+
+    if queue_on_teleport then
+        queue_on_teleport(script)
+    elseif getgenv().queue_on_teleport then
+        getgenv().queue_on_teleport(script)
+    end
+
+    wait(1)
+    TeleportService:TeleportToPlaceInstance(PLACE_ID, jobIds[nextIndex], LocalPlayer)
+end
+
+-- Wait for game and start
+if not game:IsLoaded() then game.Loaded:Wait() end
+if not LocalPlayer.Character then LocalPlayer.CharacterAdded:Wait() end
+wait(10)
+
+_G.RiftScanner.AlreadyScannedServer = false
+scanRifts()
