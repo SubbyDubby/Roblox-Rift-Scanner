@@ -6,15 +6,6 @@ local WEBHOOK_URL_25X = "https://discord.com/api/webhooks/1363451259016712192/OI
 local PLACE_ID = 85896571713843
 local PLACE_ID = 85896571713843
 local jobIds = {
-    "b4d008f4-930c-45b1-a811-e46293605406",
-        "0d470a2a-292c-4563-9898-e36d7de3e7d8",
-        "b1355301-69db-41dd-8ad1-beca1da1fdda",
-        "57a9384a-a571-483f-8e82-915505b8bb59",
-        "66245507-e78f-4471-a3d6-bdbb86947dd6",
-        "ac098509-7f44-4897-982b-be1c1787773a",
-        "823a3404-d208-4e36-94c9-1a51eb6ce8f5",
-        "9fa73194-0f32-4102-8c86-de2b7cf219e2",
-        "4eb8f112-9a59-4fbd-8c21-ba5f6dc7b761",
         "9421af1d-0d48-4ff6-9c36-7a6b136f4e4d",
         "da80d6f5-d4c3-471e-aa8e-15aa24cb8904",
         "7ca8f62d-c2ee-4f5f-b614-8ce73b03ae99",
